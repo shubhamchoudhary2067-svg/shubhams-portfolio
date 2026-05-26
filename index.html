@@ -534,19 +534,22 @@
     <p style="color:rgba(212,197,169,0.5);font-size:1rem;max-width:480px;margin-bottom:3rem;">Light, shadow, and the stories found in between — a visual diary from across India and beyond.</p>
   </div>
   <style>
+    /* ── Gallery Grid ── */
     .gallery-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 0.75rem;
-      align-items: start;
+      columns: 4;
+      column-gap: 0.6rem;
     }
-    @media(max-width:1100px){ .gallery-grid{ grid-template-columns: repeat(3, 1fr); } }
-    @media(max-width:700px){ .gallery-grid{ grid-template-columns: repeat(2, 1fr); } }
+    @media(max-width:1100px){ .gallery-grid{ columns: 3; } }
+    @media(max-width:700px){  .gallery-grid{ columns: 2; } }
+
     .gallery-item {
+      break-inside: avoid;
+      margin-bottom: 0.6rem;
       position: relative;
       overflow: hidden;
       border-radius: 2px;
-      cursor: pointer;
+      cursor: zoom-in;
+      display: block;
     }
     .gallery-item img {
       width: 100%;
@@ -554,9 +557,8 @@
       display: block;
       transition: transform 0.5s ease;
     }
-    .gallery-item:hover img {
-      transform: scale(1.04);
-    }
+    .gallery-item:hover img { transform: scale(1.04); }
+
     .gallery-overlay {
       position: absolute;
       inset: 0;
@@ -568,9 +570,8 @@
       justify-content: flex-end;
       padding: 1rem;
     }
-    .gallery-item:hover .gallery-overlay {
-      opacity: 1;
-    }
+    .gallery-item:hover .gallery-overlay { opacity: 1; }
+
     .gallery-cat {
       font-size: 0.62rem;
       letter-spacing: 0.18em;
@@ -584,7 +585,96 @@
       color: var(--cream);
       font-weight: 300;
     }
+
+    /* ── Lightbox ── */
+    #lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: rgba(20, 10, 5, 0.96);
+      justify-content: center;
+      align-items: center;
+      cursor: zoom-out;
+    }
+    #lightbox.open { display: flex; }
+
+    #lightbox-img {
+      max-width: 92vw;
+      max-height: 92vh;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 2px;
+      box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+      cursor: default;
+      animation: lb-in 0.25s ease;
+    }
+    @keyframes lb-in {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    #lightbox-close {
+      position: fixed;
+      top: 1.2rem;
+      right: 1.5rem;
+      font-size: 2rem;
+      color: rgba(255,255,255,0.7);
+      cursor: pointer;
+      line-height: 1;
+      background: none;
+      border: none;
+      transition: color 0.2s;
+      z-index: 1000;
+    }
+    #lightbox-close:hover { color: #fff; }
+
+    #lightbox-caption {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 0; right: 0;
+      text-align: center;
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.1rem;
+      font-weight: 300;
+      color: rgba(245,240,232,0.8);
+      letter-spacing: 0.05em;
+      pointer-events: none;
+    }
+
+    /* skeleton */
+    .gallery-skeleton { display: contents; }
+    .skeleton-item {
+      break-inside: avoid;
+      margin-bottom: 0.6rem;
+      aspect-ratio: 3/4;
+      background: linear-gradient(90deg, rgba(212,197,169,0.15) 25%, rgba(212,197,169,0.3) 50%, rgba(212,197,169,0.15) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 2px;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .gallery-item { opacity: 0; transition: opacity 0.4s ease; }
+    .gallery-item.loaded { opacity: 1; }
+    .gallery-error {
+      color: rgba(212,197,169,0.5);
+      font-size: 0.9rem;
+      text-align: center;
+      padding: 2rem;
+    }
   </style>
+
+  <!-- Lightbox -->
+  <div id="lightbox">
+    <button id="lightbox-close" aria-label="Close">&#x2715;</button>
+    <img id="lightbox-img" src="" alt="" />
+    <div id="lightbox-caption"></div>
+  </div>
+
   <!-- Gallery loaded dynamically from images/gallery.json -->
   <div class="gallery-grid reveal" id="gallery-grid">
     <!-- Loading skeleton -->
@@ -628,50 +718,67 @@
 
   <script>
     (function () {
-      const grid = document.getElementById('gallery-grid');
+      const grid    = document.getElementById('gallery-grid');
+      const lb      = document.getElementById('lightbox');
+      const lbImg   = document.getElementById('lightbox-img');
+      const lbCap   = document.getElementById('lightbox-caption');
+      const lbClose = document.getElementById('lightbox-close');
+
+      // ── Lightbox ──
+      function openLightbox(src, caption) {
+        lbImg.src = src;
+        lbImg.alt = caption;
+        lbCap.textContent = caption;
+        lb.classList.add('open');
+        document.body.style.overflow = 'hidden';
+      }
+      function closeLightbox() {
+        lb.classList.remove('open');
+        lbImg.src = '';
+        document.body.style.overflow = '';
+      }
+      lb.addEventListener('click', closeLightbox);
+      lbImg.addEventListener('click', e => e.stopPropagation());
+      lbClose.addEventListener('click', closeLightbox);
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+      // ── Gallery Loader ──
+      const imgObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const item = entry.target;
+          const img  = item.querySelector('img[data-src]');
+          if (img) {
+            img.src = img.dataset.src;
+            img.removeAttribute('data-src');
+            img.onload  = () => item.classList.add('loaded');
+            img.onerror = () => item.classList.add('loaded');
+          }
+          imgObserver.unobserve(item);
+        });
+      }, { rootMargin: '200px 0px' });
 
       fetch('images/gallery.json')
-        .then(res => {
-          if (!res.ok) throw new Error('gallery.json not found');
-          return res.json();
-        })
+        .then(res => { if (!res.ok) throw new Error('Missing gallery.json'); return res.json(); })
         .then(photos => {
-          // Remove skeleton
           const skeleton = document.getElementById('gallery-loading');
           if (skeleton) skeleton.remove();
-
-          // IntersectionObserver: load image only when item enters viewport
-          const imgObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-              if (!entry.isIntersecting) return;
-              const item = entry.target;
-              const img = item.querySelector('img[data-src]');
-              if (img) {
-                img.src = img.dataset.src;
-                img.removeAttribute('data-src');
-                img.onload = () => item.classList.add('loaded');
-                img.onerror = () => item.classList.add('loaded');
-              }
-              imgObserver.unobserve(item);
-            });
-          }, { rootMargin: '200px 0px' }); // start loading 200px before visible
 
           photos.forEach((photo, i) => {
             const item = document.createElement('div');
             item.className = 'gallery-item';
 
+            const src = 'images/' + photo.filename;
             const img = document.createElement('img');
             img.alt = photo.cap;
 
             if (i < 12) {
-              // First 12: load immediately
-              img.src = 'images/' + photo.filename;
-              img.onload = () => item.classList.add('loaded');
+              img.src = src;
+              img.onload  = () => item.classList.add('loaded');
               img.onerror = () => item.classList.add('loaded');
             } else {
-              // Rest: lazy via IntersectionObserver
-              img.dataset.src = 'images/' + photo.filename;
-              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1px placeholder
+              img.dataset.src = src;
+              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
               imgObserver.observe(item);
             }
 
@@ -681,6 +788,13 @@
 
             item.appendChild(img);
             item.appendChild(overlay);
+
+            // Click → lightbox
+            item.addEventListener('click', () => {
+              const actualSrc = img.dataset.src || img.src;
+              openLightbox(actualSrc, photo.cap);
+            });
+
             grid.appendChild(item);
           });
         })
