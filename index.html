@@ -627,12 +627,12 @@
   </style>
 
   <script>
-    (function() {
+    (function () {
       const grid = document.getElementById('gallery-grid');
 
       fetch('images/gallery.json')
         .then(res => {
-          if (!res.ok) throw new Error('Could not load gallery.json');
+          if (!res.ok) throw new Error('gallery.json not found');
           return res.json();
         })
         .then(photos => {
@@ -640,19 +640,44 @@
           const skeleton = document.getElementById('gallery-loading');
           if (skeleton) skeleton.remove();
 
+          // IntersectionObserver: load image only when item enters viewport
+          const imgObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+              if (!entry.isIntersecting) return;
+              const item = entry.target;
+              const img = item.querySelector('img[data-src]');
+              if (img) {
+                img.src = img.dataset.src;
+                img.removeAttribute('data-src');
+                img.onload = () => item.classList.add('loaded');
+                img.onerror = () => item.classList.add('loaded');
+              }
+              imgObserver.unobserve(item);
+            });
+          }, { rootMargin: '200px 0px' }); // start loading 200px before visible
+
           photos.forEach((photo, i) => {
             const item = document.createElement('div');
             item.className = 'gallery-item';
 
             const img = document.createElement('img');
-            img.src = 'images/' + photo.filename;
             img.alt = photo.cap;
-            img.onload = () => item.classList.add('loaded');
-            img.onerror = () => item.classList.add('loaded'); // still show slot
+
+            if (i < 12) {
+              // First 12: load immediately
+              img.src = 'images/' + photo.filename;
+              img.onload = () => item.classList.add('loaded');
+              img.onerror = () => item.classList.add('loaded');
+            } else {
+              // Rest: lazy via IntersectionObserver
+              img.dataset.src = 'images/' + photo.filename;
+              img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 1px placeholder
+              imgObserver.observe(item);
+            }
 
             const overlay = document.createElement('div');
             overlay.className = 'gallery-overlay';
-            overlay.innerHTML = \`<span class="gallery-cat">\${photo.cat}</span><span class="gallery-cap">\${photo.cap}</span>\`;
+            overlay.innerHTML = '<span class="gallery-cat">' + photo.cat + '</span><span class="gallery-cap">' + photo.cap + '</span>';
 
             item.appendChild(img);
             item.appendChild(overlay);
@@ -666,7 +691,7 @@
           msg.className = 'gallery-error';
           msg.textContent = 'Gallery could not be loaded.';
           grid.appendChild(msg);
-          console.error('Gallery load error:', err);
+          console.error('Gallery error:', err);
         });
     })();
   </script>
